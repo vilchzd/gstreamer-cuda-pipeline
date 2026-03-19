@@ -1,0 +1,23 @@
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Build folders (anywhere in repo)
+Debug/
+Release/
+x64/
+x86/
+
+# Compiled files
+*.exe
+*.obj
+*.pdb
+*.ilk
+
+# CMake (if you ever use it later)
+CMakeFiles/
+CMakeCache.txt
+
+# Logs
+*.log
