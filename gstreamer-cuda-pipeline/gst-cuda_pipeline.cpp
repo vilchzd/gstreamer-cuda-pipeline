@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <gst/gst.h>
+#include <gst/app/gstappsink.h>
 
 using namespace std;
 
@@ -13,7 +14,7 @@ int main(int argc, char* argv[]) {
     gst_init(&argc, &argv);
 
     source = gst_element_factory_make("mfvideosrc", "source");
-    sink = gst_element_factory_make("autovideosink", "sink");
+    sink = gst_element_factory_make("appsink", "sink");
     convert = gst_element_factory_make("videoconvert", "convert");
     pipeline = gst_pipeline_new("webcam-pipeline");
 
@@ -22,8 +23,15 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    gst_bin_add_many(GST_BIN(pipeline), source, convert, sink, NULL); //Null, stops reading arguments 
+    g_object_set(sink, "emit-signals", FALSE,  "sync", FALSE, NULL);
 
+    // Force BGR format
+    GstCaps *caps = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "BGR", NULL);
+    g_object_set(sink, "caps", caps, NULL);
+    gst_caps_unref(caps);
+
+
+    gst_bin_add_many(GST_BIN(pipeline), source, convert, sink, NULL); //Null, stops reading arguments 
 
     if (!gst_element_link_many(source, convert, sink, NULL)) {
         g_printerr("Elements could not be linked.\n");
@@ -32,15 +40,33 @@ int main(int argc, char* argv[]) {
     }
 
     gst_element_set_state(pipeline, GST_STATE_PLAYING);
+    cout << "Streaming..." << endl;
 
-    bus = gst_element_get_bus(pipeline);
-    msg = gst_bus_timed_pop_filtered(bus,GST_CLOCK_TIME_NONE, (GstMessageType)(GST_MESSAGE_ERROR | GST_MESSAGE_EOS));
+    while (true) {
+        GstSample *sample = gst_app_sink_pull_sample(GST_APP_SINK(sink));
+        if (!sample) {
+            cout << "No sample received" << endl;
+            break;
+        }
 
-    if (msg != NULL) {
-        gst_message_unref(msg);
+        GstBuffer *buffer = gst_sample_get_buffer(sample);
+        GstCaps *sample_caps = gst_sample_get_caps(sample);
+        GstStructure *s = gst_caps_get_structure(sample_caps, 0);
+
+        int width, height;
+        gst_structure_get_int(s, "width", &width);
+        gst_structure_get_int(s, "height", &height);
+
+        GstMapInfo map;
+        if (gst_buffer_map(buffer, &map, GST_MAP_READ)) {
+            unsigned char* data = map.data;
+            cout << "Frame: " << width << "x" << height << " | size: " << map.size << endl;
+            gst_buffer_unmap(buffer, &map);
+        }
+
+        gst_sample_unref(sample);
     }
 
-    gst_object_unref(bus);
     gst_element_set_state(pipeline, GST_STATE_NULL);
     gst_object_unref(pipeline);
 
