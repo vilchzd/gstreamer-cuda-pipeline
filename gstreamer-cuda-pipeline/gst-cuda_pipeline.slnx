@@ -1,7 +1,0 @@
-<Solution>
-  <Configurations>
-    <Platform Name="x64" />
-    <Platform Name="x86" />
-  </Configurations>
-  <Project Path="gst-cuda_pipeline.vcxproj" Id="5a3afe4d-30eb-4792-8ec0-093fa2bf87aa" />
-</Solution>

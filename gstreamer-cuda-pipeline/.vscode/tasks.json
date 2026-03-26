@@ -1,0 +1,43 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "cuda-build",
+            "type": "shell",
+            "command": "call",
+            "args": [
+                "\"C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\Common7\\Tools\\VsDevCmd.bat\"",
+                "-arch=x64",
+                "&&",
+                "nvcc",
+                "gst-cuda_pipeline.cpp",
+ //             "image_process.cpp",
+ //             "image_process.cu",
+                "%INCLUDES%",
+                "%LIBPATHS%",
+                "%LIBS%",
+                "-o",
+                "build.exe",
+                "&&",
+                "build.exe",
+                "&&",
+                "del",
+                "build.exe"
+            ],
+            "options": {
+                "cwd": "${fileDirname}",
+                "env": {
+                    "INCLUDES": "-I\"C:\\Program Files\\gstreamer\\1.0\\msvc_x86_64\\include\\glib-2.0\" -I\"C:\\Program Files\\gstreamer\\1.0\\msvc_x86_64\\lib\\glib-2.0\\include\" -I\"C:\\Program Files\\gstreamer\\1.0\\msvc_x86_64\\include\\gstreamer-1.0\" -I\"C:\\opt\\opencv\\build\\include\"",
+                    "LIBPATHS": "-L\"C:\\Program Files\\gstreamer\\1.0\\msvc_x86_64\\lib\" -L\"C:\\opt\\opencv\\build\\x64\\vc16\\lib\"",
+                    "LIBS": "-lgstreamer-1.0 -lglib-2.0 -lgobject-2.0 -lgmodule-2.0 -lgthread-2.0 -lopencv_world4120 -lopencv_world4120d"
+                },
+                "shell": {
+                    "executable": "C:\\WINDOWS\\System32\\cmd.exe",
+                    "args": ["/c"]
+                }
+            },
+            "problemMatcher": ["$msCompile"],
+            "group": {"kind": "build", "isDefault": true}
+        }
+    ]
+}

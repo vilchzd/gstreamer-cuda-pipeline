@@ -1,7 +1,8 @@
-// gst-cudapipeline.cpp : this file contains the 'main' function. program execution begins and ends there.
-
+#include <stdio.h>
 #include <iostream>
 #include <gst/gst.h>
+
+using namespace std;
 
 int main(int argc, char* argv[]) {
 
