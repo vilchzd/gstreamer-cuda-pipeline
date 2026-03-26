@@ -2,6 +2,7 @@
 .vs/
 *.user
 *.suo
+.vscode/
 
 # Build folders (anywhere in repo)
 Debug/
