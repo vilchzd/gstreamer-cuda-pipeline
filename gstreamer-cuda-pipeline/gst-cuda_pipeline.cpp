@@ -2,8 +2,10 @@
 #include <iostream>
 #include <gst/gst.h>
 #include <gst/app/gstappsink.h>
+#include <chrono>
 
 using namespace std;
+using namespace chrono;
 
 int main(int argc, char* argv[]) {
 
@@ -42,8 +44,12 @@ int main(int argc, char* argv[]) {
     gst_element_set_state(pipeline, GST_STATE_PLAYING);
     cout << "Streaming..." << endl;
 
+    auto last_time = high_resolution_clock::now();
+    
     while (true) {
+
         GstSample *sample = gst_app_sink_pull_sample(GST_APP_SINK(sink));
+        
         if (!sample) {
             cout << "No sample received" << endl;
             break;
@@ -51,12 +57,28 @@ int main(int argc, char* argv[]) {
 
         GstBuffer *buffer = gst_sample_get_buffer(sample);
         GstCaps *sample_caps = gst_sample_get_caps(sample);
-        GstStructure *s = gst_caps_get_structure(sample_caps, 0);
+        GstStructure *structure = gst_caps_get_structure(sample_caps, 0);
 
         int width, height;
-        gst_structure_get_int(s, "width", &width);
-        gst_structure_get_int(s, "height", &height);
+        gst_structure_get_int(structure, "width", &width);
+        gst_structure_get_int(structure, "height", &height);
 
+        int num, denom;
+        float fps = 0.0f;
+        if (gst_structure_get_fraction(structure, "framerate", &num, &denom)) {
+            fps = static_cast<float>(num) / denom;
+        }
+
+        auto now = high_resolution_clock::now();
+        float interval_ms = duration<float, milli>(now - last_time).count();
+        last_time = now;
+
+        std::cout << "Frame: " << width << "x" << height 
+                << " | size: " << gst_buffer_get_size(gst_sample_get_buffer(sample)) 
+                << " | fps (from caps): " << fps 
+                << " | fps (measured): " << 1000.0f/interval_ms << std::endl;
+
+                
         GstMapInfo map;
         if (gst_buffer_map(buffer, &map, GST_MAP_READ)) {
             unsigned char* data = map.data;
