@@ -9,33 +9,43 @@ using namespace chrono;
 
 int main(int argc, char* argv[]) {
 
-    GstElement* pipeline, * source, * convert, * sink;
-    GstBus* bus;
-    GstMessage* msg;
+    GstElement *pipeline, *source, *convert, *sink;
+    GstElement *appsrc, *display_convert, *videosink;
+    //GstBus *bus;
+    //GstMessage *msg;
 
     gst_init(&argc, &argv);
 
     source = gst_element_factory_make("mfvideosrc", "source");
     sink = gst_element_factory_make("appsink", "sink");
     convert = gst_element_factory_make("videoconvert", "convert");
+
+    appsrc = gst_element_factory_make("appsrc", "mysrc");
+    display_convert = gst_element_factory_make("videoconvert", "display_convert");
+    videosink = gst_element_factory_make("autovideosink", "videosink");
+
+
     pipeline = gst_pipeline_new("webcam-pipeline");
 
-    if (!pipeline || !source || !convert || !sink) {
+    if (!pipeline || !source || !convert || !sink || !appsrc || !display_convert || !videosink) {
         g_printerr("Not all elements could be created.\n");
         return -1;
     }
 
-    g_object_set(sink, "emit-signals", FALSE,  "sync", FALSE, NULL);
+    g_object_set(sink, "emit-signals", FALSE, "sync", FALSE, NULL);
 
     // Force BGR format
     GstCaps *caps = gst_caps_new_simple("video/x-raw", "format", G_TYPE_STRING, "BGR", NULL);
     g_object_set(sink, "caps", caps, NULL);
+    g_object_set(appsrc,"caps", caps, "format", GST_FORMAT_TIME, "is-live", TRUE,  NULL);
     gst_caps_unref(caps);
 
 
-    gst_bin_add_many(GST_BIN(pipeline), source, convert, sink, NULL); //Null, stops reading arguments 
 
-    if (!gst_element_link_many(source, convert, sink, NULL)) {
+
+    //gst_bin_add_many(GST_BIN(pipeline), source, convert, sink, NULL); //Null, stops reading arguments 
+    gst_bin_add_many(GST_BIN(pipeline), source, convert, sink, appsrc, display_convert, videosink, NULL);
+    if (!gst_element_link_many(source, convert, sink, NULL) || !gst_element_link_many(appsrc, display_convert, videosink, NULL)) {
         g_printerr("Elements could not be linked.\n");
         gst_object_unref(pipeline);
         return -1;
@@ -82,7 +92,7 @@ int main(int argc, char* argv[]) {
         GstMapInfo map;
         if (gst_buffer_map(buffer, &map, GST_MAP_READ)) {
             unsigned char* data = map.data;
-            cout << "Frame: " << width << "x" << height << " | size: " << map.size << endl;
+    //        cout << "Frame: " << width << "x" << height << " | size: " << map.size << endl;
             gst_buffer_unmap(buffer, &map);
         }
 
