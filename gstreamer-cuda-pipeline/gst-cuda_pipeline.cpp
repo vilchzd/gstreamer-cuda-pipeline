@@ -4,6 +4,8 @@
 #include <iostream>
 #include <chrono>
 
+#include "blur-kernel.h"
+
 using namespace std;
 using namespace std::chrono;
 
@@ -59,6 +61,11 @@ static GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
 
     GstBuffer *buffer = gst_sample_get_buffer(sample);
     GstCaps *caps = gst_sample_get_caps(sample);
+    GstStructure *structure = gst_caps_get_structure(caps, 0);
+
+    int width, height;
+    gst_structure_get_int(structure, "width", &width);
+    gst_structure_get_int(structure, "height", &height);   
 
     static bool caps_set = false;
     if (!caps_set) {
@@ -67,16 +74,39 @@ static GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
         gst_caps_unref(newcaps);
         caps_set = true;
     }
+    
+    GstMapInfo map;
+    if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) {
+        g_printerr("Failed to map input buffer\n");
+        gst_sample_unref(sample);
+        return GST_FLOW_ERROR;
+    }
 
-    GstBuffer *out_buffer = gst_buffer_ref(buffer);
-    GST_BUFFER_PTS(out_buffer) = GST_BUFFER_PTS(buffer);                     //Timestamps, presentation timespam 
+    GstBuffer *out_buffer = gst_buffer_new_allocate(NULL, map.size, NULL);
+
+    GstMapInfo out_map;
+    if (!gst_buffer_map(out_buffer, &out_map, GST_MAP_WRITE)) {
+        g_printerr("Failed to map output buffer\n");
+        gst_buffer_unmap(buffer, &map);
+        gst_sample_unref(sample);
+        return GST_FLOW_ERROR;
+    }
+
+    //GstBuffer *out_buffer = gst_buffer_ref(buffer);
+    //------------------------------------- CUDA kernel ---------------------------------------------------//
+    
+    gpu_wrapper_blurBGR(map.data, out_map.data, width, height, GRID_SIZE); 
+
+    gst_buffer_unmap(buffer, &map);
+    gst_buffer_unmap(out_buffer, &out_map);
+    
+    GST_BUFFER_PTS(out_buffer) = GST_BUFFER_PTS(buffer);                     
     GST_BUFFER_DURATION(out_buffer) = GST_BUFFER_DURATION(buffer);
 
     GstFlowReturn ret = gst_app_src_push_buffer(appsrc_display, out_buffer);
 
     gst_sample_unref(sample);
 
- 
     frame_count++;
     auto now = steady_clock::now();
     auto elapsed = duration_cast<seconds>(now - last_time).count();
@@ -85,7 +115,6 @@ static GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
         frame_count = 0;
         last_time = now;
     }
-
 
     if (ret != GST_FLOW_OK) {
         g_printerr("Push buffer failed: %d\n", ret);
@@ -110,8 +139,11 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    g_object_set(appsink, "emit-signals", TRUE, "sync", FALSE, "max-buffers", 1, "drop", TRUE, NULL);
+    GstCaps *caps = gst_caps_from_string("video/x-raw,format=BGR");
+    g_object_set(appsink, "emit-signals", TRUE, "sync", FALSE, "max-buffers", 1, "drop", TRUE, "caps", caps, NULL);
+    gst_caps_unref(caps);
     g_signal_connect(appsink, "new-sample", G_CALLBACK(new_sample), nullptr);
+
     gst_bin_add_many(GST_BIN(pipeline_capture), source, convert, appsink, NULL);
     if (!gst_element_link_many(source, convert, appsink, NULL)) {
         g_printerr("Failed to link capture pipeline.\n");
