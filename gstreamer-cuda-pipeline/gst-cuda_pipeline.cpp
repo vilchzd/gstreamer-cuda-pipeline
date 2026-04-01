@@ -7,14 +7,51 @@
 using namespace std;
 using namespace std::chrono;
 
+GMainLoop* global_loop = nullptr;
 GstAppSrc* appsrc_display = nullptr;
-
 
 static int frame_count = 0;
 static steady_clock::time_point last_time = steady_clock::now();
 
+//-------------------------- Ctrl+C Handler ---------------------------------//
+void handle_sigint(int) {
+    if (global_loop) {
+        cout << "\nStopping pipeline..." << endl;
+        g_main_loop_quit(global_loop);
+    }
+}
 
+//--------------------------- Bus Callback ----------------------------------//
+static void on_message(GstBus* bus, GstMessage* message, gpointer user_data) {
+    GMainLoop* loop = (GMainLoop*)user_data;
 
+    switch (GST_MESSAGE_TYPE(message)) {
+
+        case GST_MESSAGE_ERROR: {
+            GError* err;
+            gchar* debug;
+
+            gst_message_parse_error(message, &err, &debug);
+            g_printerr("ERROR: %s\n", err->message);
+
+            g_error_free(err);
+            g_free(debug);
+
+            g_main_loop_quit(loop);
+            break;
+        }
+
+        case GST_MESSAGE_EOS:
+            g_print("End of stream\n");
+            g_main_loop_quit(loop);
+            break;
+
+        default:
+            break;
+    }
+}
+
+//--------------------------- Appsink Callback ------------------------------//
 static GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
 
     GstSample *sample = gst_app_sink_pull_sample(appsink);
@@ -57,11 +94,12 @@ static GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
     return GST_FLOW_OK;
 }
 
+//---------------------------- Main Function --------------------------------//
 int main(int argc, char* argv[]) {
 
     gst_init(&argc, &argv);
 
-    //------------------------Capture pipeline ------------------------------//
+    //------------------------ Capture pipeline -----------------------------//
     GstElement *pipeline_capture = gst_pipeline_new("capture-pipeline");
     GstElement *source = gst_element_factory_make("mfvideosrc", "source"); 
     GstElement *convert = gst_element_factory_make("videoconvert", "convert");
@@ -103,12 +141,28 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
+    //---------------------------- Bus ---------------------------------------//
+    GstBus* bus = gst_element_get_bus(pipeline_capture);
+    gst_bus_add_signal_watch(bus);
+
+    GMainLoop* loop = g_main_loop_new(nullptr, FALSE);
+    global_loop = loop;
+
+    g_signal_connect(bus, "message", G_CALLBACK(on_message), loop);
+
     //------------------------ Initialize pipelines -------------------------//
-    gst_element_set_state(pipeline_capture, GST_STATE_PLAYING);
-    gst_element_set_state(pipeline_display, GST_STATE_PLAYING);
+    // gst_element_set_state(pipeline_capture, GST_STATE_PLAYING);
+    // gst_element_set_state(pipeline_display, GST_STATE_PLAYING);
+
+    if (gst_element_set_state(pipeline_capture, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE || 
+        gst_element_set_state(pipeline_display, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
+        g_printerr("Failed to start pipelines.\n");
+        return -1;
+    }
+
     cout << "Streaming webcam footage" << endl;
 
-    GMainLoop* loop = g_main_loop_new(nullptr, FALSE);                                   // Main loop
+    //GMainLoop* loop = g_main_loop_new(nullptr, FALSE);                                   // Main loop
     g_main_loop_run(loop);
 
     //------------------------ Cleanup -------------------------------------//
@@ -116,6 +170,7 @@ int main(int argc, char* argv[]) {
     gst_element_set_state(pipeline_display, GST_STATE_NULL);
     gst_object_unref(pipeline_capture);
     gst_object_unref(pipeline_display);
+    gst_object_unref(bus);
     g_main_loop_unref(loop);
 
     return 0;
