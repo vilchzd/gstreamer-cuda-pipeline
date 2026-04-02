@@ -1,3 +1,4 @@
+#include <cuda_runtime.h>
 #include <gst/gst.h>
 #include <gst/app/gstappsink.h>
 #include <gst/app/gstappsrc.h>
@@ -9,8 +10,10 @@
 using namespace std;
 using namespace std::chrono;
 
-GMainLoop* global_loop = nullptr;
-GstAppSrc* appsrc_display = nullptr;
+GMainLoop *global_loop = nullptr;
+GstAppSrc *appsrc_display = nullptr;
+static unsigned char *d_input = nullptr;
+static unsigned char *d_output = nullptr;
 
 static int frame_count = 0;
 static steady_clock::time_point last_time = steady_clock::now();
@@ -93,9 +96,16 @@ static GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
     }
 
     //GstBuffer *out_buffer = gst_buffer_ref(buffer);
-    //------------------------------------- CUDA kernel ---------------------------------------------------//
+    //--------------------- CUDA kernel --------------------------//
+    static size_t buffer_size = 0;
+    if (d_input == nullptr) {
+        buffer_size = map.size;
+        cudaMalloc(&d_input, buffer_size);
+        cudaMalloc(&d_output, buffer_size);
+        cout << "Allocating buffer in GPU memory" << endl;
+    }
     
-    gpu_wrapper_blurBGR(map.data, out_map.data, width, height, GRID_SIZE); 
+    gpu_wrapper_blurBGR(map.data, out_map.data, d_input, d_output, width, height, buffer_size, GRID_SIZE); 
 
     gst_buffer_unmap(buffer, &map);
     gst_buffer_unmap(out_buffer, &out_map);
@@ -124,7 +134,7 @@ static GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
 }
 
 //---------------------------- Main Function --------------------------------//
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
 
     gst_init(&argc, &argv);
 
@@ -174,10 +184,10 @@ int main(int argc, char* argv[]) {
     }
 
     //---------------------------- Bus ---------------------------------------//
-    GstBus* bus = gst_element_get_bus(pipeline_capture);
+    GstBus *bus = gst_element_get_bus(pipeline_capture);
     gst_bus_add_signal_watch(bus);
 
-    GMainLoop* loop = g_main_loop_new(nullptr, FALSE);
+    GMainLoop *loop = g_main_loop_new(nullptr, FALSE);
     global_loop = loop;
 
     g_signal_connect(bus, "message", G_CALLBACK(on_message), loop);
@@ -200,6 +210,8 @@ int main(int argc, char* argv[]) {
     //------------------------ Cleanup -------------------------------------//
     gst_element_set_state(pipeline_capture, GST_STATE_NULL);
     gst_element_set_state(pipeline_display, GST_STATE_NULL);
+    cudaFree(d_input);
+    cudaFree(d_output); 
     gst_object_unref(pipeline_capture);
     gst_object_unref(pipeline_display);
     gst_object_unref(bus);
