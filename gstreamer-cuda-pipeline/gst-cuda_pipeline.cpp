@@ -4,27 +4,23 @@
 #include <gst/app/gstappsrc.h>
 #include <iostream>
 #include <chrono>
+#include <thread>
+#include <atomic>
 
 #include "blur-kernel.h"
 
 using namespace std;
-using namespace std::chrono;
+using namespace chrono;
 
 GMainLoop *global_loop = nullptr;
 GstAppSrc *appsrc_display = nullptr;
 static unsigned char *d_input = nullptr;
 static unsigned char *d_output = nullptr;
+atomic<bool> filter_enabled(false);
+atomic<bool> running(true);
 
 static int frame_count = 0;
 static steady_clock::time_point last_time = steady_clock::now();
-
-//-------------------------- Ctrl+C Handler ---------------------------------//
-void handle_sigint(int) {
-    if (global_loop) {
-        cout << "\nStopping pipeline..." << endl;
-        g_main_loop_quit(global_loop);
-    }
-}
 
 //--------------------------- Bus Callback ----------------------------------//
 static void on_message(GstBus* bus, GstMessage* message, gpointer user_data) {
@@ -85,30 +81,38 @@ static GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
         return GST_FLOW_ERROR;
     }
 
-    GstBuffer *out_buffer = gst_buffer_new_allocate(NULL, map.size, NULL);
+    GstBuffer *out_buffer = nullptr;
 
-    GstMapInfo out_map;
-    if (!gst_buffer_map(out_buffer, &out_map, GST_MAP_WRITE)) {
-        g_printerr("Failed to map output buffer\n");
+    if (filter_enabled) { 
+
+        static size_t buffer_size = 0;
+        if (d_input == nullptr) {
+            buffer_size = map.size;
+            //Allocating buffer in GPU memory"
+            cudaMalloc(&d_input, buffer_size);
+            cudaMalloc(&d_output, buffer_size);
+        }
+
+        out_buffer = gst_buffer_new_allocate(NULL, map.size, NULL);
+
+        GstMapInfo out_map;
+        if (!gst_buffer_map(out_buffer, &out_map, GST_MAP_WRITE)) {
+            g_printerr("Failed to map output buffer\n");
+            gst_buffer_unmap(buffer, &map);
+            gst_sample_unref(sample);
+            return GST_FLOW_ERROR;
+        }
+
+        gpu_wrapper_blurBGR(map.data, out_map.data, d_input, d_output, width, height, buffer_size, GRID_SIZE);  //<<--------------------- CUDA kernel 
+
         gst_buffer_unmap(buffer, &map);
-        gst_sample_unref(sample);
-        return GST_FLOW_ERROR;
-    }
+        gst_buffer_unmap(out_buffer, &out_map);
 
-    //GstBuffer *out_buffer = gst_buffer_ref(buffer);
-    //--------------------- CUDA kernel --------------------------//
-    static size_t buffer_size = 0;
-    if (d_input == nullptr) {
-        buffer_size = map.size;
-        cudaMalloc(&d_input, buffer_size);
-        cudaMalloc(&d_output, buffer_size);
-        cout << "Allocating buffer in GPU memory" << endl;
+    } else {
+        out_buffer = gst_buffer_ref(buffer);;
     }
-    
-    gpu_wrapper_blurBGR(map.data, out_map.data, d_input, d_output, width, height, buffer_size, GRID_SIZE); 
 
     gst_buffer_unmap(buffer, &map);
-    gst_buffer_unmap(out_buffer, &out_map);
     
     GST_BUFFER_PTS(out_buffer) = GST_BUFFER_PTS(buffer);                     
     GST_BUFFER_DURATION(out_buffer) = GST_BUFFER_DURATION(buffer);
@@ -121,7 +125,11 @@ static GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
     auto now = steady_clock::now();
     auto elapsed = duration_cast<seconds>(now - last_time).count();
     if (elapsed >= 1) {
-        cout << "FPS: " << frame_count / elapsed << endl;
+        cout << "\033[s";        
+        cout << "\033[4;1H";  
+        cout << "FPS: " << frame_count / elapsed << "     ";   
+        cout << "\033[u";           
+        cout << flush;
         frame_count = 0;
         last_time = now;
     }
@@ -131,6 +139,40 @@ static GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
     }
 
     return GST_FLOW_OK;
+}
+
+//...............................Key Input...................................//
+void keyboard_inputs() {
+    while (running) {
+
+        cout << "\033[5;1H";
+        cout << "Blur: " << (filter_enabled ? "ON" : "OFF") << "     ";
+        cout << "\033[6;1H";
+        cout << "\033[K";
+        cout << "Command (t=toggle | q=quit): " << flush;
+
+        char input;
+        cin >> input;   
+
+        if (input == 't') {
+            filter_enabled = !filter_enabled;
+            cout << "\033[5;1H";
+            cout << "Blur: " << (filter_enabled ? "ON" : "OFF") << "     ";
+
+            cout << "\033[6;1H";
+            cout << "\033[K";
+            cout << "Command (t=toggle | q=quit): " << flush;
+        }
+        else if (input == 'q') {
+            cout << ">>>Stopping pipeline" << endl;
+            running = false;
+
+            if (global_loop) {
+                g_main_loop_quit(global_loop);
+            }
+            break;
+        }
+    }
 }
 
 //---------------------------- Main Function --------------------------------//
@@ -202,10 +244,15 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
-    cout << "Streaming webcam footage" << endl;
+    cout << ">>>Starting Pipeline" << endl;
+    cout << "Streaming webcam footage\n" << endl;
 
+    std::thread key_thread(keyboard_inputs);
     //GMainLoop* loop = g_main_loop_new(nullptr, FALSE);                                   // Main loop
     g_main_loop_run(loop);
+
+    running = false;
+    key_thread.join();
 
     //------------------------ Cleanup -------------------------------------//
     gst_element_set_state(pipeline_capture, GST_STATE_NULL);
