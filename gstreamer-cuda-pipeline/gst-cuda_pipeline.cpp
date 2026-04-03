@@ -7,182 +7,23 @@
 #include <thread>
 #include <atomic>
 
-#include "blur-kernel.h"
+#include "globals.h"
+#include "callbacks.h"
+#include "blur_kernel.h"
 
 using namespace std;
 using namespace chrono;
 
 GMainLoop *global_loop = nullptr;
 GstAppSrc *appsrc_display = nullptr;
-static unsigned char *d_input = nullptr;
-static unsigned char *d_output = nullptr;
+unsigned char *d_input = nullptr;
+unsigned char *d_output = nullptr;
 atomic<bool> filter_enabled(false);
 atomic<bool> running(true);
 
-static int frame_count = 0;
-static steady_clock::time_point last_time = steady_clock::now();
+int frame_count = 0;
+steady_clock::time_point last_time = steady_clock::now();
 
-//--------------------------- Bus Callback ----------------------------------//
-static void on_message(GstBus* bus, GstMessage* message, gpointer user_data) {
-    GMainLoop* loop = (GMainLoop*)user_data;
-
-    switch (GST_MESSAGE_TYPE(message)) {
-
-        case GST_MESSAGE_ERROR: {
-            GError* err;
-            gchar* debug;
-
-            gst_message_parse_error(message, &err, &debug);
-            g_printerr("ERROR: %s\n", err->message);
-
-            g_error_free(err);
-            g_free(debug);
-
-            g_main_loop_quit(loop);
-            break;
-        }
-
-        case GST_MESSAGE_EOS:
-            g_print("End of stream\n");
-            g_main_loop_quit(loop);
-            break;
-
-        default:
-            break;
-    }
-}
-
-//--------------------------- Appsink Callback ------------------------------//
-static GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
-
-    GstSample *sample = gst_app_sink_pull_sample(appsink);
-    if (!sample) return GST_FLOW_ERROR;
-
-    GstBuffer *buffer = gst_sample_get_buffer(sample);
-    GstCaps *caps = gst_sample_get_caps(sample);
-    GstStructure *structure = gst_caps_get_structure(caps, 0);
-
-    int width, height;
-    gst_structure_get_int(structure, "width", &width);
-    gst_structure_get_int(structure, "height", &height); 
-    size_t pixels_per_frame = width * height;
-    size_t pixel_ops_per_pixel = 0;
-
-    static bool caps_set = false;
-    if (!caps_set) {
-        GstCaps *newcaps = gst_caps_copy(caps);
-        gst_app_src_set_caps(appsrc_display, newcaps);
-        gst_caps_unref(newcaps);
-        caps_set = true;
-    }
-    
-    GstMapInfo map;
-    if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) {
-        g_printerr("Failed to map input buffer\n");
-        gst_sample_unref(sample);
-        return GST_FLOW_ERROR;
-    }
-
-    GstBuffer *out_buffer = nullptr;
-
-    if (filter_enabled) { 
-
-        pixel_ops_per_pixel = (2 * GRID_SIZE + 1) * (2 * GRID_SIZE + 1);
-        static size_t buffer_size = 0;
-        if (d_input == nullptr) {
-            buffer_size = map.size;
-            //Allocating buffer in GPU memory"
-            cudaMalloc(&d_input, buffer_size);
-            cudaMalloc(&d_output, buffer_size);
-        }
-
-        out_buffer = gst_buffer_new_allocate(NULL, map.size, NULL);
-
-        GstMapInfo out_map;
-        if (!gst_buffer_map(out_buffer, &out_map, GST_MAP_WRITE)) {
-            g_printerr("Failed to map output buffer\n");
-            gst_buffer_unmap(buffer, &map);
-            gst_sample_unref(sample);
-            return GST_FLOW_ERROR;
-        }
-
-        gpu_wrapper_blurBGR(map.data, out_map.data, d_input, d_output, width, height, buffer_size, GRID_SIZE);  //<<--------------------- CUDA kernel 
-
-        gst_buffer_unmap(buffer, &map);
-        gst_buffer_unmap(out_buffer, &out_map);
-
-    } else {
-        out_buffer = gst_buffer_ref(buffer);
-    }
-
-    gst_buffer_unmap(buffer, &map);
-    
-    GST_BUFFER_PTS(out_buffer) = GST_BUFFER_PTS(buffer);                     
-    GST_BUFFER_DURATION(out_buffer) = GST_BUFFER_DURATION(buffer);
-
-    GstFlowReturn ret = gst_app_src_push_buffer(appsrc_display, out_buffer);
-
-    gst_sample_unref(sample);
-
-    frame_count++;
-    auto now = steady_clock::now();
-    auto elapsed = duration_cast<seconds>(now - last_time).count();
-    
-    if (elapsed >= 1) {
-        cout << "\033[s";        
-        cout << "\033[4;1H";  
-        double pos = frame_count / elapsed * pixels_per_frame * pixel_ops_per_pixel;
-        cout << "Res: " << width << "x" << height << "| Block Size: " << BLOCK_SIZE 
-             << "| Grid: " << 2*GRID_SIZE+1 <<"x" << 2*GRID_SIZE+1  <<" | FPS: " 
-             << frame_count / elapsed << " | " << pos / 1e9 << " Gpx/s";   
-        cout << "\033[u";           
-        cout << flush;
-        frame_count = 0;
-        last_time = now;
-    }
-
-    if (ret != GST_FLOW_OK) {
-        g_printerr("Push buffer failed: %d\n", ret);
-    }
-
-    return GST_FLOW_OK;
-}
-
-//...............................Key Input...................................//
-void keyboard_inputs() {
-    while (running) {
-
-        cout << "\033[5;1H";
-        cout << "Blur: " << (filter_enabled ? "ON" : "OFF") << "     ";
-        cout << "\033[6;1H";
-        cout << "\033[K";
-        cout << "Command (t=toggle | q=quit): " << flush;
-
-        char input;
-        cin >> input;   
-
-        if (input == 't') {
-            filter_enabled = !filter_enabled;
-            cout << "\033[5;1H";
-            cout << "Blur: " << (filter_enabled ? "ON" : "OFF") << "     ";
-
-            cout << "\033[6;1H";
-            cout << "\033[K";
-            cout << "Command (t=toggle | q=quit): " << flush;
-        }
-        else if (input == 'q') {
-            cout << ">>>Stopping pipeline" << endl;
-            running = false;
-
-            if (global_loop) {
-                g_main_loop_quit(global_loop);
-            }
-            break;
-        }
-    }
-}
-
-//---------------------------- Main Function --------------------------------//
 int main(int argc, char *argv[]) {
 
     gst_init(&argc, &argv);
@@ -242,9 +83,6 @@ int main(int argc, char *argv[]) {
     g_signal_connect(bus, "message", G_CALLBACK(on_message), loop);
 
     //------------------------ Initialize pipelines -------------------------//
-    // gst_element_set_state(pipeline_capture, GST_STATE_PLAYING);
-    // gst_element_set_state(pipeline_display, GST_STATE_PLAYING);
-
     if (gst_element_set_state(pipeline_capture, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE || 
         gst_element_set_state(pipeline_display, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
         g_printerr("Failed to start pipelines.\n");
@@ -254,7 +92,7 @@ int main(int argc, char *argv[]) {
     cout << ">>>Starting Pipeline" << endl;
     cout << "Streaming webcam footage\n" << endl;
 
-    std::thread key_thread(keyboard_inputs);
+    thread key_thread(keyboard_inputs);
     //GMainLoop* loop = g_main_loop_new(nullptr, FALSE);                                   // Main loop
     g_main_loop_run(loop);
 

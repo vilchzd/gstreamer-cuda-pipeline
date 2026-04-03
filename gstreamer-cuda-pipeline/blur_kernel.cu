@@ -1,9 +1,9 @@
-#include <iostream>   
 #include <cstdlib>   
 #include <iomanip>
 #include <vector>
 #include <cuda_runtime.h>
-#include "blur-kernel.h"
+
+#include "blur_kernel.h"
 
 using namespace std;
 
