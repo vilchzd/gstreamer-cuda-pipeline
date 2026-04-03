@@ -64,7 +64,9 @@ static GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
 
     int width, height;
     gst_structure_get_int(structure, "width", &width);
-    gst_structure_get_int(structure, "height", &height);   
+    gst_structure_get_int(structure, "height", &height); 
+    size_t pixels_per_frame = width * height;
+    size_t pixel_ops_per_pixel = 0;
 
     static bool caps_set = false;
     if (!caps_set) {
@@ -85,6 +87,7 @@ static GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
 
     if (filter_enabled) { 
 
+        pixel_ops_per_pixel = (2 * GRID_SIZE + 1) * (2 * GRID_SIZE + 1);
         static size_t buffer_size = 0;
         if (d_input == nullptr) {
             buffer_size = map.size;
@@ -109,7 +112,7 @@ static GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
         gst_buffer_unmap(out_buffer, &out_map);
 
     } else {
-        out_buffer = gst_buffer_ref(buffer);;
+        out_buffer = gst_buffer_ref(buffer);
     }
 
     gst_buffer_unmap(buffer, &map);
@@ -124,10 +127,14 @@ static GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
     frame_count++;
     auto now = steady_clock::now();
     auto elapsed = duration_cast<seconds>(now - last_time).count();
+    
     if (elapsed >= 1) {
         cout << "\033[s";        
         cout << "\033[4;1H";  
-        cout << "FPS: " << frame_count / elapsed << "     ";   
+        double pos = frame_count / elapsed * pixels_per_frame * pixel_ops_per_pixel;
+        cout << "Res: " << width << "x" << height << "| Block Size: " << BLOCK_SIZE 
+             << "| Grid: " << 2*GRID_SIZE+1 <<"x" << 2*GRID_SIZE+1  <<" | FPS: " 
+             << frame_count / elapsed << " | " << pos / 1e9 << " Gpx/s";   
         cout << "\033[u";           
         cout << flush;
         frame_count = 0;
