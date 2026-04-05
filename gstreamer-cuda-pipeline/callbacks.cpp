@@ -45,7 +45,7 @@ GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
 
     if (filter_enabled) { 
 
-        pixel_ops_per_pixel = (2 * GRID_SIZE + 1) * (2 * GRID_SIZE + 1);
+        pixel_ops_per_pixel = (2 * grid + 1) * (2 * grid + 1);
         static size_t buffer_size = 0;
         if (d_input == nullptr) {
             buffer_size = map.size;
@@ -63,7 +63,7 @@ GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
             return GST_FLOW_ERROR;
         }
 
-        gpu_wrapper_blurBGR(map.data, out_map.data, d_input, d_output, width, height, buffer_size, GRID_SIZE);  //<<--------------------- CUDA kernel 
+        gpu_wrapper_blurBGR(map.data, out_map.data, d_input, d_output, width, height, buffer_size, grid);  //<<--------------------- CUDA kernel 
 
         gst_buffer_unmap(out_buffer, &out_map);
 
@@ -88,8 +88,8 @@ GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
         cout << "\033[s";        
         cout << "\033[4;1H";  
         double pos = frame_count / elapsed * pixels_per_frame * pixel_ops_per_pixel;
-        cout << "Res: " << width << "x" << height << "| Block Size: " << BLOCK_SIZE 
-             << "| Grid: " << 2*GRID_SIZE+1 <<"x" << 2*GRID_SIZE+1  <<" | FPS: " 
+        cout << "Res: " << width << "x" << height << " | Block Size: " << BLOCK_SIZE 
+             << "| Grid: " << 2*grid+1 <<"x" << 2*grid+1  <<" | FPS: " 
              << frame_count / elapsed << " | " << pos / 1e9 << " Gpx/s";   
         cout << "\033[u";           
         cout << flush;
@@ -142,7 +142,7 @@ void keyboard_inputs() {
         cout << "Blur: " << (filter_enabled ? "ON" : "OFF") << "     ";
         cout << "\033[6;1H";
         cout << "\033[K";
-        cout << "Command (t=toggle | q=quit): " << flush;
+        cout << "Command (t=toggle | i=increase | u=decrease | q=quit): " << flush;
 
         char input;
         cin >> input;   
@@ -155,6 +155,16 @@ void keyboard_inputs() {
             cout << "\033[6;1H";
             cout << "\033[K";
             cout << "Command (t=toggle | q=quit): " << flush;
+        }
+        else if (input == 'i') {
+            if (grid < 48) {
+                grid += 1;
+            }
+        }
+        else if (input == 'u') {
+            if (grid > 0) {
+              grid -= 1;
+            }
         }
         else if (input == 'q') {
             cout << ">>>Stopping pipeline" << endl;

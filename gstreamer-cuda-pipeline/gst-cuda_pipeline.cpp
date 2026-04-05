@@ -18,6 +18,7 @@ GMainLoop *global_loop = nullptr;
 GstAppSrc *appsrc_display = nullptr;
 unsigned char *d_input = nullptr;
 unsigned char *d_output = nullptr;
+int grid = GRID_SIZE;
 atomic<bool> filter_enabled(false);
 atomic<bool> running(true);
 
