@@ -5,6 +5,7 @@
 
 #include "blur_kernel.h"
 #include "globals.h"
+#include "callbacks.h"
 
 using namespace std;
 /*
@@ -156,8 +157,20 @@ void gpu_wrapper_blurBGR(unsigned char* h_input, unsigned char* h_output, unsign
     dim3 grid_size((width + BLOCK_SIZE - 1)/BLOCK_SIZE, (height + BLOCK_SIZE - 1)/BLOCK_SIZE); //blocks covering inpt image
     size_t sharedMem_size = (BLOCK_SIZE + 2 * grid) * (BLOCK_SIZE + 2 * grid) * 3; //tile_size
 
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    cudaEventRecord(start);
     gpu_blurBGR<<<grid_size, block_size, sharedMem_size>>>(d_input, d_output, width, height, grid);
-    
+    cudaEventRecord(stop); 
+
+    cudaEventSynchronize(stop);
+    cudaEventElapsedTime(&kernel_time, start, stop);
+
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
     cudaMemcpy(h_output, d_output, size, cudaMemcpyDeviceToHost);
 
 }

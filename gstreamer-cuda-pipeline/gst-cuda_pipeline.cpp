@@ -18,11 +18,15 @@ GMainLoop *global_loop = nullptr;
 GstAppSrc *appsrc_display = nullptr;
 unsigned char *d_input = nullptr;
 unsigned char *d_output = nullptr;
-int grid = GRID_SIZE;
 atomic<bool> filter_enabled(false);
 atomic<bool> running(true);
 
+int grid = GRID_SIZE;
 int frame_count = 0;
+float kernel_time = 0;
+float total_kernel = 0;
+double total_lat = 0;
+
 steady_clock::time_point last_time = steady_clock::now();
 
 int main(int argc, char *argv[]) {

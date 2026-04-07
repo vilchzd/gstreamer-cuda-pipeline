@@ -20,6 +20,9 @@ extern atomic<bool> filter_enabled;
 extern atomic<bool> running;
 
 extern int frame_count;
+extern float kernel_time;
+extern float total_kernel;
+extern double total_lat;
 extern steady_clock::time_point last_time;
 
 #endif

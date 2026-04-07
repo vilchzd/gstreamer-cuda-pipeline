@@ -3,6 +3,7 @@
 #include <gst/app/gstappsink.h>
 #include <gst/app/gstappsrc.h>
 #include <iostream>
+#include <iomanip>
 #include <chrono>
 
 #include "globals.h"
@@ -12,6 +13,8 @@
 
 //--------------------------- Appsink Callback ------------------------------//
 GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
+
+    auto frame_start = high_resolution_clock::now();
 
     GstSample *sample = gst_app_sink_pull_sample(appsink);
     if (!sample) return GST_FLOW_ERROR;
@@ -63,6 +66,7 @@ GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
             return GST_FLOW_ERROR;
         }
 
+        float kernel_ms = 0.0f;
         gpu_wrapper_blurBGR(map.data, out_map.data, d_input, d_output, width, height, buffer_size, grid);  //<<--------------------- CUDA kernel 
 
         gst_buffer_unmap(out_buffer, &out_map);
@@ -80,20 +84,28 @@ GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
 
     gst_sample_unref(sample);
 
-    frame_count++;
     auto now = steady_clock::now();
     auto elapsed = duration_cast<seconds>(now - last_time).count();
+    auto frame_end = high_resolution_clock::now();
+    double latency = duration<double,milli>(frame_end - frame_start).count();
+    total_lat += latency;
+    total_kernel += kernel_time;
+    frame_count++;
     
     if (elapsed >= 1) {
         cout << "\033[s";        
         cout << "\033[4;1H";  
         double pos = frame_count / elapsed * pixels_per_frame * pixel_ops_per_pixel;
         cout << "Res: " << width << "x" << height << " | Block Size: " << BLOCK_SIZE 
-             << "| Grid: " << 2*grid+1 <<"x" << 2*grid+1  <<" | FPS: " 
-             << frame_count / elapsed << " | " << pos / 1e9 << " Gpx/s";   
+             << " | Grid: " << 2*grid+1 << "x" << 2*grid+1 << " |";
+        cout << "\033[5;1H";
+        cout <<"FPS: " << frame_count / elapsed << " | Latency: "<<  total_lat / frame_count << "ms | Kernel Time: " << kernel_time / frame_count
+             << "ms | POS: " << fixed << setprecision(2) << pos / 1e9 << " Gpx/s";
         cout << "\033[u";           
         cout << flush;
         frame_count = 0;
+        total_kernel = 0;
+        total_lat = 0;
         last_time = now;
     }
 
@@ -138,9 +150,9 @@ void on_message(GstBus* bus, GstMessage* message, gpointer user_data) {
 void keyboard_inputs() {
     while (running) {
 
-        cout << "\033[5;1H";
-        cout << "Blur: " << (filter_enabled ? "ON" : "OFF") << "     ";
         cout << "\033[6;1H";
+        cout << "Blur: " << (filter_enabled ? "ON" : "OFF") << "     ";
+        cout << "\033[7;1H";
         cout << "\033[K";
         cout << "Command (t=toggle | i=increase | u=decrease | q=quit): " << flush;
 
@@ -149,10 +161,10 @@ void keyboard_inputs() {
 
         if (input == 't') {
             filter_enabled = !filter_enabled;
-            cout << "\033[5;1H";
+            cout << "\033[6;1H";
             cout << "Blur: " << (filter_enabled ? "ON" : "OFF") << "     ";
 
-            cout << "\033[6;1H";
+            cout << "\033[7;1H";
             cout << "\033[K";
             cout << "Command (t=toggle | q=quit): " << flush;
         }
