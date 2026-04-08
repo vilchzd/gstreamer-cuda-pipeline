@@ -93,12 +93,13 @@ GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
     frame_count++;
     
     if (elapsed >= 1) {
+
         cout << "\033[s";        
-        cout << "\033[4;1H";  
+        cout << "\033[4;1H\033[K";      
         double pos = frame_count / elapsed * pixels_per_frame * pixel_ops_per_pixel;
         cout << "Res: " << width << "x" << height << " | Block Size: " << BLOCK_SIZE 
              << " | Grid: " << 2*grid+1 << "x" << 2*grid+1 << " |";
-        cout << "\033[5;1H";
+        cout << "\033[5;1H\033[K";  
         cout <<"FPS: " << frame_count / elapsed << " | Latency: "<<  total_lat / frame_count << "ms | Kernel Time: " << total_kernel / frame_count
              << "ms | POS: " << fixed << setprecision(2) << pos / 1e9 << " Gpx/s";
         cout << "\033[u";           
@@ -150,10 +151,9 @@ void on_message(GstBus* bus, GstMessage* message, gpointer user_data) {
 void keyboard_inputs() {
     while (running) {
 
-        cout << "\033[6;1H";
+        cout << "\033[6;1H\033[K";
         cout << "Blur: " << (filter_enabled ? "ON" : "OFF") << "     ";
-        cout << "\033[7;1H";
-        cout << "\033[K";
+        cout << "\033[7;1H\033[J";  
         cout << "Command (t=toggle | i=increase | u=decrease | q=quit): " << flush;
 
         char input;
@@ -161,12 +161,10 @@ void keyboard_inputs() {
 
         if (input == 't') {
             filter_enabled = !filter_enabled;
-            cout << "\033[6;1H";
+            cout << "\033[6;1H\033[K";
             cout << "Blur: " << (filter_enabled ? "ON" : "OFF") << "     ";
-
-            cout << "\033[7;1H";
-            cout << "\033[K";
-            cout << "Command (t=toggle | q=quit): " << flush;
+            cout << "\033[7;1H\033[J"; 
+            cout << "Command (t=toggle | i=increase | u=decrease | q=quit): " << flush;
         }
         else if (input == 'i') {
             if (grid < 48) {

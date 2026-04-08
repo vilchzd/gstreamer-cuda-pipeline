@@ -94,6 +94,7 @@ int main(int argc, char *argv[]) {
         return -1;
     }
 
+    cout << "\033[2J\033[H"; 
     cout << ">>>Starting Pipeline" << endl;
     cout << "Streaming webcam footage\n" << endl;
 

@@ -4,7 +4,8 @@
 *.suo
 .vscode/
 
-# Build folders (anywhere in repo)
+# Build folders 
+build/
 Debug/
 Release/
 x64/
