@@ -66,12 +66,12 @@ GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
             return GST_FLOW_ERROR;
         }
 
-        float kernel_ms = 0.0f;
         gpu_wrapper_blurBGR(map.data, out_map.data, d_input, d_output, width, height, buffer_size, grid);  //<<--------------------- CUDA kernel 
 
         gst_buffer_unmap(out_buffer, &out_map);
 
     } else {
+        kernel_time = 0;
         out_buffer = gst_buffer_ref(buffer);
     }
 
@@ -99,7 +99,7 @@ GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
         cout << "Res: " << width << "x" << height << " | Block Size: " << BLOCK_SIZE 
              << " | Grid: " << 2*grid+1 << "x" << 2*grid+1 << " |";
         cout << "\033[5;1H";
-        cout <<"FPS: " << frame_count / elapsed << " | Latency: "<<  total_lat / frame_count << "ms | Kernel Time: " << kernel_time / frame_count
+        cout <<"FPS: " << frame_count / elapsed << " | Latency: "<<  total_lat / frame_count << "ms | Kernel Time: " << total_kernel / frame_count
              << "ms | POS: " << fixed << setprecision(2) << pos / 1e9 << " Gpx/s";
         cout << "\033[u";           
         cout << flush;
