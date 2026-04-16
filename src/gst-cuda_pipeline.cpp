@@ -35,7 +35,18 @@ int main(int argc, char *argv[]) {
 
     //------------------------ Capture pipeline -----------------------------//
     GstElement *pipeline_capture = gst_pipeline_new("capture-pipeline");
-    GstElement *source = gst_element_factory_make("mfvideosrc", "source"); 
+
+    GstElement *source = nullptr;
+
+    #ifdef _WIN32
+        source = gst_element_factory_make("mfvideosrc", "source");
+    #elif __linux__
+        source = gst_element_factory_make("v4l2src", "source");
+    #else
+        g_printerr("Unsupported OS.\n");
+        return -1;
+    #endif
+
     GstElement *convert = gst_element_factory_make("videoconvert", "convert");
     GstElement *appsink = gst_element_factory_make("appsink", "appsink");
 
@@ -43,6 +54,10 @@ int main(int argc, char *argv[]) {
         g_printerr("Failed to create capture elements.\n");
         return -1;
     }
+
+    #ifdef __linux__
+    g_object_set(source, "device", "/dev/video0", NULL);
+    #endif
 
     GstCaps *caps = gst_caps_from_string("video/x-raw,format=BGR");
     g_object_set(appsink, "emit-signals", TRUE, "sync", FALSE, "max-buffers", 1, "drop", TRUE, "caps", caps, NULL);
