@@ -1,2 +1,2 @@
 # gstreamer-cuda-pipeline
-Modular GStreamer-based video pipeline with CUDA acceleration for real-time processing.
+A real-time GStreamer-based video pipeline with CUDA acceleration
