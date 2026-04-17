@@ -48,7 +48,7 @@ elseif(UNIX)
 endif()
 
 add_executable(gst_cuda_pipeline
-    src/gst-cuda_pipeline.cpp
+    src/main.cpp
     src/blur_kernel.cu
     src/callbacks.cpp
 )
