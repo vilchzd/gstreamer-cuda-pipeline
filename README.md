@@ -1,12 +1,14 @@
 # gstreamer-cuda-pipeline
 A real-time GStreamer-based video pipeline with CUDA acceleration
-# Dependencies
-NVIDIA GPU with CUDA support
-CUDA 13.2
-GStreamer 1.28.1
-CMake 3.18+
 
-# Run instructions 
+# Dependencies
+
+-NVIDIA GPU with CUDA support
+-CUDA 13.2
+-GStreamer 1.28.1
+-CMake 3.18+
+
+# Build instructions 
 
 For windows:
 ```text

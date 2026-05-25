@@ -47,25 +47,25 @@ elseif(UNIX)
 
 endif()
 
-add_executable(gst_cuda_pipeline
+add_executable(main
     src/main.cpp
     src/blur_kernel.cu
     src/callbacks.cpp
 )
 
-target_include_directories(gst_cuda_pipeline PRIVATE
+target_include_directories(main PRIVATE
     ${GSTREAMER_INCLUDE_DIRS}
     src/headers
 )
 
-set_property(TARGET gst_cuda_pipeline PROPERTY CUDA_SEPARABLE_COMPILATION ON)
-set_property(TARGET gst_cuda_pipeline PROPERTY CUDA_RUNTIME_LIBRARY Hybrid)
+set_property(TARGET main PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+set_property(TARGET main PROPERTY CUDA_RUNTIME_LIBRARY Hybrid)
 
 if(WIN32)
-    target_compile_options(gst_cuda_pipeline PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/MD>)
+    target_compile_options(main PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=/MD>)
 endif()
 
-target_link_libraries(gst_cuda_pipeline
+target_link_libraries(main
     ${GSTREAMER_LIBRARIES}
     CUDA::cudart
 )
