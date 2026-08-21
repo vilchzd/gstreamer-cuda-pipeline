@@ -10,6 +10,5 @@ using namespace std;
 
 //GPU Funtions
 void gpu_wrapper_blurBGR(unsigned char* h_input, unsigned char*, unsigned char* d_input, unsigned char* d_output, int width, int height, size_t size, int grid);
-//void gpu_wrapper_blurGRAY(unsigned char* h_input, unsigned char* h_output, int width, int height, int grid);
 
 #endif 

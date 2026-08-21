@@ -51,10 +51,23 @@ GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
         pixel_ops_per_pixel = (2 * grid + 1) * (2 * grid + 1);
         static size_t buffer_size = 0;
         if (d_input == nullptr) {
+
             buffer_size = map.size;
-            //Allocating buffer in GPU memory"
-            cudaMalloc(&d_input, buffer_size);
-            cudaMalloc(&d_output, buffer_size);
+
+            //<<------------------------------------------------------------------------------------------------Allocating buffer in GPU memory
+            cudaError_t err = cudaMalloc(&d_input, buffer_size);
+            if (err != cudaSuccess) {
+                cerr << "CUDA device input allocation failed: "<< cudaGetErrorString(err) << endl;
+                return GST_FLOW_ERROR;
+            }
+            err = cudaMalloc(&d_output, buffer_size);
+            if (err != cudaSuccess) {
+                cerr << "CUDA device output allocation failed: "<< cudaGetErrorString(err) << endl;
+                cudaFree(d_input);
+                d_input = nullptr;
+                return GST_FLOW_ERROR;
+            }
+
         }
 
         out_buffer = gst_buffer_new_allocate(NULL, map.size, NULL);
@@ -67,7 +80,6 @@ GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data) {
         }
 
         gpu_wrapper_blurBGR(map.data, out_map.data, d_input, d_output, width, height, buffer_size, grid);  //<<--------------------- CUDA kernel 
-
         gst_buffer_unmap(out_buffer, &out_map);
 
     } else {
@@ -186,4 +198,28 @@ void keyboard_inputs() {
             break;
         }
     }
+}
+
+//............................... Help CLI ...............................//
+void help_message() {
+
+        cout << "Usage: main [OPTIONS]" << endl;
+
+        cout << "Options:" << endl;
+        cout << " --help                 Show this help message" << endl;
+
+        #ifdef __linux__
+        cout << " --camera <device>      Select camera device " << "(default: /dev/video0)" << endl;
+        #endif
+
+        cout << "\nKeyboard controls:\n";
+        cout << "  t                Toggle blur on/off" << endl;
+        cout << "  i                Increase blur radius" << endl;
+        cout << "  u                Decrease blur radius" << endl;
+        cout << "  q                Quit the program" << endl;
+
+        cout << "\nBlur settings:\n";
+        cout << "  Block size:      " << BLOCK_SIZE << "x" << BLOCK_SIZE << endl;
+        cout << "  Initial radius:  " << grid << endl;
+        cout << "  Maximum radius:  48" << endl;
 }

@@ -3,6 +3,7 @@
 #include <gst/app/gstappsink.h>
 #include <gst/app/gstappsrc.h>
 #include <iostream>
+#include <cstring>
 #include <chrono>
 #include <thread>
 #include <atomic>
@@ -31,6 +32,30 @@ steady_clock::time_point last_time = steady_clock::now();
 
 int main(int argc, char *argv[]) {
 
+    #ifdef __linux__
+    string camera_device = "/dev/video0";
+    #endif
+
+    //------------------------ CLI -----------------------------//
+    if (argc > 1) {
+
+        if (strcmp(argv[1], "--help") == 0) {
+            help_message();
+            return 0;
+        }
+
+    #ifdef __linux__ 
+        else if (strcmp(argv[1], "--camera") == 0) {
+            if (argc < 3) {
+                cerr << "Error: --camera requires a device.\n";
+                return -1;
+            }
+            camera_device = argv[2];
+        }
+    #endif
+
+    }
+
     gst_init(&argc, &argv);
 
     //------------------------ Capture pipeline -----------------------------//
@@ -56,7 +81,8 @@ int main(int argc, char *argv[]) {
     }
 
     #ifdef __linux__
-    g_object_set(source, "device", "/dev/video0", NULL);
+        g_object_set(source, "device", camera_device.c_str(), NULL);
+        cout << "Using camera: " << camera_device << endl;
     #endif
 
     GstCaps *caps = gst_caps_from_string("video/x-raw,format=BGR");

@@ -8,6 +8,7 @@
 
 GstFlowReturn new_sample(GstAppSink* appsink, gpointer user_data);
 void keyboard_inputs();
+void help_message();
 void on_message(GstBus* bus, GstMessage* message, gpointer user_data);
 
 #endif
